@@ -3,14 +3,15 @@ from dataclasses import dataclass
 
 from measurements.pairs import load_reading_pair
 from measurements.readings import Reading
-from sampling.draws import Draw, get_draw
+from sampling.draws import Draw, RestrictedDraw, get_draw
 from sampling.plans import FullPairPlan, get_plan
+from sampling.restricted import RestrictedPairPlan
 
 
 @dataclass(frozen=True, slots=True)
 class IssueEvidence:
-    plan: FullPairPlan
-    draw: Draw
+    plan: FullPairPlan | RestrictedPairPlan
+    draw: Draw | RestrictedDraw
     left: Reading
     right: Reading
 

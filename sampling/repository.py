@@ -1,4 +1,5 @@
 import sqlite3
+from fractions import Fraction
 
 
 def initialize_sampling_tables(db: sqlite3.Connection) -> None:
@@ -17,6 +18,22 @@ def initialize_sampling_tables(db: sqlite3.Connection) -> None:
             left_piece TEXT NOT NULL,
             right_piece TEXT NOT NULL,
             CHECK (left_piece <> right_piece)
+        )
+    ''')
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS restricted_plans (
+            plan_id INTEGER PRIMARY KEY REFERENCES plans(plan_id)
+        )
+    ''')
+    db.execute('''
+        CREATE TABLE IF NOT EXISTS restricted_plan_pairs (
+            plan_id INTEGER NOT NULL REFERENCES plans(plan_id),
+            position INTEGER NOT NULL CHECK (position >= 0),
+            left_piece TEXT NOT NULL,
+            right_piece TEXT NOT NULL,
+            numerator TEXT NOT NULL,
+            denominator TEXT NOT NULL,
+            PRIMARY KEY (plan_id, position)
         )
     ''')
 
@@ -56,3 +73,44 @@ class SamplingRepository:
         return _load_row(
             self.db, 'SELECT plan_id, left_piece, right_piece FROM draws WHERE draw_id = ?', draw_id,
         )
+
+    def is_restricted_plan(self, plan_id: int) -> bool:
+        row = self.db.execute(
+            'SELECT 1 FROM restricted_plans WHERE plan_id = ?', (plan_id,),
+        ).fetchone()
+        return row is not None
+
+    def insert_restricted_plan(
+        self,
+        freeze_id: int,
+        batch_id: str,
+        probabilities: dict[tuple[str, str], Fraction],
+    ) -> int:
+        with self.db:
+            cursor = self.db.execute(
+                'INSERT INTO plans (freeze_id, batch_id) VALUES (?, ?)', (freeze_id, batch_id),
+            )
+            plan_id = cursor.lastrowid
+            self.db.execute('INSERT INTO restricted_plans (plan_id) VALUES (?)', (plan_id,))
+            self.db.executemany(
+                '''INSERT INTO restricted_plan_pairs
+                       (plan_id, position, left_piece, right_piece, numerator, denominator)
+                   VALUES (?, ?, ?, ?, ?, ?)''',
+                (
+                    (plan_id, position, left_piece, right_piece,
+                     str(probability.numerator), str(probability.denominator))
+                    for position, ((left_piece, right_piece), probability) in enumerate(probabilities.items())
+                ),
+            )
+        return plan_id
+
+    def load_restricted_probabilities(self, plan_id: int) -> dict[tuple[str, str], Fraction]:
+        rows = self.db.execute(
+            '''SELECT left_piece, right_piece, numerator, denominator
+               FROM restricted_plan_pairs WHERE plan_id = ? ORDER BY position''',
+            (plan_id,),
+        ).fetchall()
+        return {
+            (left_piece, right_piece): Fraction(int(numerator), int(denominator))
+            for left_piece, right_piece, numerator, denominator in rows
+        }

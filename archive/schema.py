@@ -23,6 +23,8 @@ class ReportSnapshot:
     left: ReportObservation
     right: ReportObservation
     estimate: Fraction
+    pair_count: int | None = None
+    probability: Fraction | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -66,18 +68,25 @@ def encode_snapshot(snapshot: ReportSnapshot) -> str:
         'right': _encode_observation(snapshot.right),
         'estimate': encode_rational(snapshot.estimate),
     }
+    if snapshot.pair_count is not None:
+        payload['pair_count'] = snapshot.pair_count
+    if snapshot.probability is not None:
+        payload['probability'] = encode_rational(snapshot.probability)
     return json.dumps(payload, ensure_ascii=False, separators=(',', ':'))
 
 
 def decode_snapshot(content: str) -> ReportSnapshot:
     payload = json.loads(content)
+    probability = payload.get('probability')
     return ReportSnapshot(
-        basis=payload['basis'],
-        batch_id=payload['batch_id'],
-        freeze_id=payload['freeze_id'],
-        plan_id=payload['plan_id'],
-        draw_id=payload['draw_id'],
-        left=_decode_observation(payload['left']),
-        right=_decode_observation(payload['right']),
-        estimate=decode_rational(*payload['estimate']),
+        payload['basis'],
+        payload['batch_id'],
+        payload['freeze_id'],
+        payload['plan_id'],
+        payload['draw_id'],
+        _decode_observation(payload['left']),
+        _decode_observation(payload['right']),
+        decode_rational(*payload['estimate']),
+        payload.get('pair_count'),
+        decode_rational(*probability) if probability is not None else None,
     )

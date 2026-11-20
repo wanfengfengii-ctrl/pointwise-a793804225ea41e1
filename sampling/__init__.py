@@ -1,7 +1,10 @@
 from .draws import Draw as Draw
+from .draws import RestrictedDraw as RestrictedDraw
 from .draws import draw_pair as draw_pair
 from .draws import get_draw as get_draw
 from .plans import FullPairPlan as FullPairPlan
 from .plans import create_plan as create_plan
 from .plans import get_plan as get_plan
 from .random_port import IntegerRandomSource as IntegerRandomSource
+from .restricted import RestrictedPairPlan as RestrictedPairPlan
+from .restricted import create_restricted_plan as create_restricted_plan

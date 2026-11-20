@@ -23,7 +23,8 @@
 | `cohorts` | `freeze_cohorts(db, batch_id, left, right)` | 两组按传入顺序冻结，返回版号。未知批号报 `KeyError`。非法片组报 `ValueError`，无新增版。 |
 | `cohorts` | `get_cohort_freeze(db, freeze_id)` | 按确切版号取回 `CohortFreeze`。 |
 | `sampling` | `create_plan(db, freeze_id)`、`get_plan(db, plan_id)` | 建全互配计划并返回计划号，或按号取 `FullPairPlan`。 |
-| `sampling` | `draw_pair(db, plan_id, random_source)`、`get_draw(db, draw_id)` | 开炉或领取已存抽次。`Draw` 有抽次号、计划号及两片片号。 |
+| `sampling` | `create_restricted_plan(db, freeze_id, allowed_pairs)` | 按非空不重复的左右许可对清单建受限计划，冻结精确有理分布并返回计划号；清单无法满足每片 `1/n` 边际且每对正概率时返回 `None`，无新增计划或抽次。非法清单报 `ValueError`，未知冻结版报 `KeyError`。 |
+| `sampling` | `draw_pair(db, plan_id, random_source)`、`get_draw(db, draw_id)` | 开炉或领取已存抽次。`Draw` 有抽次号、计划号及两片片号；受限计划返回 `RestrictedDraw`，另含实选对的精确联合概率 `probability`。 |
 | `measurements` | `record_reading(db, draw_id, piece_id, value, instrument_ref)` | 录入实际片读数，返回 `Reading`。仪表引用须为非空文本。错片、重复录入和非法读数报 `ValueError`。 |
 | `measurements` | `load_reading_pair(db, draw_id)` | 返回左右有序槽位，缺侧为 `None`。 |
 | `analysis` | `issue_report(db, draw_id, *, before_commit=None)` | 齐备时返回 `SignedReport`，缺侧报 `ValueError`。可选的提交前回调抛错时回滚。 |
@@ -38,6 +39,14 @@
 两侧各有 n 片时，独立等概率抽片使 n² 种左右组合各以 1/n² 的概率发生。签报用实际一对的 `(左值 − 右值)²` 估计这 n² 个平方差的算术平均，计量单位为输入色值单位的平方。对于有序左组 L1、L2 和右组 R1、R2，端口依次返回 1 和 0 时抽中 L2、R1。先录右读 1/2，再录左读 0，精确签报 1/4。
 
 以 L1=1/3、L2=0、R1=1/2、R2=0 手算，位置对 (0,0)、(0,1)、(1,0)、(1,1) 的平方差分别为 1/36、1/9、1/4、0，均值为 7/72。回归逐对经实际抽次、录数、签发和独立连接领取核对这些值。
+
+## 同炉许可受限计划（V2）
+
+`create_restricted_plan(db, freeze_id, allowed_pairs)` 只允许抽许可对清单内的组合。两组各 n 片时，冻结的精确有理分布保证每片边际受检概率恰为 `1/n`、每个许可对概率严格为正、清单外概率为零。当清单中存在不属于任何完美配对的边（或整体无完美配对）时约束无解，返回 `None` 且不写入计划、分布或抽次；非法清单（空、非序列、跨组片号、重复对等）报 `ValueError`。
+
+`get_plan` 对受限计划返回 `RestrictedPairPlan`，其 `probabilities` 是 `(left_piece, right_piece)` 到 `Fraction` 的完整映射，键集恰为许可对，建计划时一次冻结。受限抽次经同一 `randbelow(upper)` 端口取一个整数，实抽频率与公开分布一致，返回的 `RestrictedDraw` 额外公开该对的联合概率 `p`；端口异常原样传播、非法位置报 `ValueError`，均无新增抽次。
+
+受限报告正文 `basis` 为 `v2/restricted-pair-mean-squared-color-difference`，新增 `pair_count`（许可对数 M）与 `probability`（实选对联合概率 p），`estimate` 为精确 `Fraction`：`(x−y)²/(M×p)`。同批另建计划或重开库后，`read_report` 按原号领取同一份定稿；V1 计划的入口、取位、计算与报告正文保持不变。`examples/restricted_pairing.json` 给出五对可行样例（A3B3 概率必为 1/3，对应签报 12/5，五个可能签报的概率加权均值为 7/2）和三对无解样例（返回 `None`）。
 
 ## 运行
 
